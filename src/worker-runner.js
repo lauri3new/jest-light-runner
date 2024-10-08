@@ -82,9 +82,9 @@ export default async function run({
   expect.setState({ snapshotState, testPath: test.path });
 
   stats.start = performance.now();
-  const { afterAll, beforeAll } = await import(test.context.config.setupFilesAfterEnv[0])
+  const { afterAll, beforeAll, afterEach } = await import(test.context.config.setupFilesAfterEnv[0])
   await beforeAll()
-  await runTestBlock(tests, hasFocusedTests, testNamePatternRE, results, stats);
+  await runTestBlock(tests, hasFocusedTests, testNamePatternRE, results, stats, [], afterEach);
   await afterAll()
   stats.end = performance.now();
 
@@ -113,7 +113,8 @@ async function runTestBlock(
   testNamePatternRE,
   results,
   stats,
-  ancestors = []
+  ancestors = [],
+  afterEach
 ) {
   await runHooks("beforeAll", block, results, stats, ancestors);
 
@@ -136,12 +137,14 @@ async function runTestBlock(
         testNamePatternRE,
         results,
         stats,
-        nextAncestors
+        nextAncestors ?? [],
+        afterEach
       );
     } else if (type === "test") {
-      await runHooks("beforeEach", block, results, stats, nextAncestors, true);
-      await runTest(fn, stats, results, ancestors, name);
-      await runHooks("afterEach", block, results, stats, nextAncestors, true);
+      await runHooks("beforeEach", block, results, stats, nextAncestors ?? [], true);
+      await runTest(fn, stats, results, ancestors ?? [], name);
+      await runHooks("afterEach", block, results, stats, nextAncestors ?? [], true);
+      await afterEach()
     }
   }
 
