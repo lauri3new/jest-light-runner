@@ -1,6 +1,7 @@
 import Tinypool from "tinypool";
 import supportsColor from "supports-color";
 import { MessageChannel } from "worker_threads";
+import * as utils from "./utils.cjs"
 
 /** @typedef {import("@jest/test-result").Test} Test */
 
@@ -21,10 +22,12 @@ export default class LightRunner {
     // when explicitly required, to prevent them from accidentally interferring
     // with the test runner. Jest's default runner does not have this problem
     // because it isolates every test in a vm.Context.
-    const { maxWorkers } = config;
-    const runInBand = maxWorkers === 1;
 
-    this._pool = new (runInBand ? InBandTinypool : Tinypool)({
+    // update: use TinyPool always
+    const { maxWorkers } = config;
+    // const runInBand = maxWorkers === 1;
+
+    this._pool = new (Tinypool)({
       filename: new URL("./worker-runner.js", import.meta.url).href,
       maxThreads: maxWorkers,
       env: {
@@ -49,7 +52,11 @@ export default class LightRunner {
     return Promise.all(
       tests.map(test => {
         const mc = new MessageChannel();
-        mc.port2.onmessage = () => onStart(test);
+         
+        mc.port2.onmessage = () => onStart({
+          ...test,
+          path: utils.default.USE_SOURCE_MAPS ? utils.default.replacePathWithSourcePath(test.path) : test.path,
+        });
         mc.port2.unref();
 
         return this._pool
