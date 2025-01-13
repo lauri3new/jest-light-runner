@@ -83,11 +83,7 @@ This will result in `ERR_UNKNOWN_FILE_EXTENSION`, due to the loader argument not
 
 ### Source maps support
 
-If you are running transpiled code and you want to load their source maps to map errors to the original code, you can install the `source-map-support` package and add the following to your Jest configuration:
-
-```js
-setupFiles: ["source-map-support/register"];
-```
+Enable source map support by setting the env var USE_SOURCE_MAPS=true.
 
 ## Stability
 

@@ -7,6 +7,7 @@ import { jestExpect as expect } from "@jest/expect";
 import * as circus from "jest-circus";
 import Tinypool from "tinypool";
 import fs from 'fs/promises'
+import * as utils from "./utils.cjs";
 
 
 /** @typedef {{ failures: number, passes: number, pending: number, start: number, end: number }} Stats */
@@ -261,12 +262,21 @@ async function toTestResult(stats, tests, { path, context }) {
   const { start, end } = stats;
   const runtime = end - start;
 
-  const x = await Promise.all(tests.filter(t => t.errors.length > 0).map(async test => await failureToStringSource(test, path.replace('.js', '.js.map'))))
+  const failureMessages = await Promise.all(
+    tests
+    .filter(t => t.errors.length > 0)
+    .map(async test => {
+      if (utils.default.USE_SOURCE_MAPS) {
+        return failureToStringSource(test, utils.default.replacePathWithSourceMapPath(path))
+      }
+      return failureToString(test)
+    })
+  )
 
   return {
     coverage: globalThis.__coverage__,
     console: null,
-    failureMessage: x
+    failureMessage: failureMessages
       .join("\n"),
     numFailingTests: stats.failures,
     numPassingTests: stats.passes,
@@ -288,12 +298,12 @@ async function toTestResult(stats, tests, { path, context }) {
     },
     sourceMaps: {},
     testExecError: null,
-    testFilePath: path.replace('pbp-api/dist/', 'pbp-api/src/').replace('.js', '.ts'),
+    testFilePath: utils.default.replacePathWithSourcePath(path),
     testResults: tests.map(test => {
       return {
         ancestorTitles: test.ancestors,
         duration: test.duration,
-        failureMessages: test.errors.length ? [failureToString(test, path.replace('.js', '.js.map'))] : [],
+        failureMessages: test.errors.length ? [failureToString(test)] : [],
         fullName: test.title,
         numPassingAsserts: test.errors.length > 0 ? 1 : 0,
         status: test.skipped
@@ -337,35 +347,24 @@ function addSnapshotData(results, snapshotState) {
   return results;
 }
 
-function failureToString(test, mapPath) {
-  const errorString =  (
-    test.ancestors.concat(test.title).join(" > ") +
+function failureToString(test) {
+  const errorString = test.ancestors.concat(test.title).join(" > ") +
     "\n" +
     test.errors
       .map(error =>
+        error instanceof Error ?
         error.stack
         .replace(/\n.*jest-light-runner.*/g, "")
         .replace(/^/gm, "    ")
+        : typeof error === 'string' ? error : JSON.stringify(error)
       )
       .join("\n") +
-    "\n"
-  ).replace('pbp-api/dist/', 'pbp-api/src/').replace('.js', '.ts');
+    "\n";
   return errorString
 }
 
 async function failureToStringSource(test, mapPath) {
-  const errorString =  (
-    test.ancestors.concat(test.title).join(" > ") +
-    "\n" +
-    test.errors
-      .map(error =>
-        error.stack
-        .replace(/\n.*jest-light-runner.*/g, "")
-        .replace(/^/gm, "    ")
-      )
-      .join("\n") +
-    "\n"
-  ).replace('pbp-api/dist/', 'pbp-api/src/').replace('.js', '.ts');
+  const errorString = failureToString(test)
 
   if (typeof mapPath !== 'string') {
     return errorString
@@ -373,13 +372,13 @@ async function failureToStringSource(test, mapPath) {
   const map = await fs.readFile(mapPath, { encoding: 'utf-8' })
 
   let modifiedErrorString = ''
-  const original = await SourceMapConsumer.with(
+  await SourceMapConsumer.with(
     map,
     null,
     consumer => {
-      let modified = errorString.replace(
+      let modified = utils.default.replacePathWithSourcePath(errorString).replace(
         /at (.*?):(\d+):(\d+)/g,
-        (match, file, line, column) => {
+        (match, _, line, column) => {
     
             const original = consumer.originalPositionFor({
                 line: Number(line),
